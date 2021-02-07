@@ -24,55 +24,59 @@ library(scales)
 library(reshape2)
 library(lmerTest)
 library(lme4)
-
-matplotlibRdBu_r <- colorRampPalette(c("#053061","#4694C4","#F6F6F6","#E7886C","#67001F"),interpolate = "spline")
 ```
 
-```{r, warnings = FALSE}
-ERP <- rbind(read.csv("EXP3.csv"), read.csv("EXP2.csv")) %>%
-            filter_if(~is.numeric(.), all_vars(!is.infinite(.)))
+```{r}
+matplotlibRdBu_r <- colorRampPalette(c("#053061","#4694C4","#F6F6F6","#E7886C","#67001F"),interpolate = "spline")
 
-ERP <- ERP[(ERP$time >= -100) & (ERP$time <= 800),]
-ERP <- gather(ERP, electrode, amplitude, Fp1:T8, factor_key=TRUE)
-ERP$time <- format(round(ERP$time, 0), nsmall = 0) 
-ERP$time <- as.numeric(as.character(ERP$time))
-names(ERP) <- c("subject", "block", "condition", "time", "electrode", "amplitude")
-
-electrodeLocs <- read_delim("https://raw.githubusercontent.com/craddm/ExploringERPs/master/biosemi70elecs.loc", "\t",
-  escape_double = FALSE,
-  col_names = c("chanNo","theta","radius", "electrode"),
-  trim_ws = TRUE)
-
-ERP$electrode <- as.factor(ERP$electrode)
-ERP$subject <- as.factor(ERP$subject)
-ERP$block <- as.factor(ERP$block)
-
-ERP$time <- as.factor(ERP$time)
-ERP <- ERP %>% group_by(subject, block, condition, electrode, time) %>% 
-  summarise(amplitude.mean=mean(amplitude),) %>% 
-  ungroup  
-ERP$time <- as.numeric(as.character(ERP$time))
-
-ERP_testing <- ERP
-ERP_testing$time <- as.double(ERP_testing$time)
-ERP_testing$amplitude.mean <- as.double(ERP_testing$amplitude.mean)
-
-electrodeLocs$radianTheta <- pi/180*electrodeLocs$theta
-electrodeLocs <- electrodeLocs %>%
-  mutate(x = .$radius*sin(.$radianTheta), y = .$radius*cos(.$radianTheta))
-
-ERP <- ERP %>% left_join(electrodeLocs, by = "electrode")
-ERP$amplitude.mean <- as.numeric(ERP$amplitude.mean)
-ERP$electrode <- as.factor(ERP$electrode)
-
-ERP <- filter(ERP, amplitude.mean <= 30 & amplitude.mean >= -30)
-ERP$amplitude.mean <- format(round(ERP$amplitude.mean, 2), nsmall = 2)
-ERP$amplitude.mean <- as.numeric(ERP$amplitude.mean)
+loc_path <- "https://raw.githubusercontent.com/craddm/ExploringERPs/master/biosemi70elecs.loc"
 
 ERP_123 = c("steelblue", "palevioletred1", "limegreen")
 sign_col <- "indianred"
 ERP_CTB = c("skyblue4", "palegreen3")
 ERP_TTB = c("palevioletred1", "palegreen3")
+```
+
+
+```{r, warnings = FALSE}
+ERP <- rbind(read.csv("EXP3.csv"), read.csv("EXP2.csv")) %>%
+            filter_if(~is.numeric(.), all_vars(!is.infinite(.))) %>%
+  filter_if(~is.numeric(.), all_vars(!is.infinite(.))) %>%
+  filter(time >= -100 | time <= 800) %>% 
+  gather(electrode, amplitude, Fp1:T8, factor_key = TRUE) %>%
+  mutate(time = as.numeric(as.character(format(round(time, 0), nsmall = 0))),
+         Subj = as.factor(Subj),
+         Block = as.factor(Block))
+
+names(ERP) <- c("subject", "block", "condition", "time", "electrode", "amplitude")
+```
+
+```{r, message = FALSE}
+electrodeLocs <- read_delim(loc_path, "\t",
+  escape_double = FALSE,
+  col_names = c("chanNo","theta","radius", "electrode"),
+  trim_ws = TRUE)
+
+ERP <- ERP %>% 
+  mutate(time = as.factor(time)) %>%
+  group_by(subject, block, condition, electrode, time) %>% 
+  summarise(amplitude.mean = mean(amplitude),) %>% 
+  ungroup() %>%
+  mutate(time = as.numeric(as.character(time)))
+
+ERP_testing <- ERP %>%
+  mutate(time = as.double(time), 
+         amplitude.mean = as.double(amplitude.mean))
+
+electrodeLocs <- electrodeLocs %>%
+  mutate(radianTheta <- pi / 180 * theta,
+          x = radius * sin(radianTheta), y = radius * cos(radianTheta))
+
+ERP <- ERP %>% left_join(electrodeLocs, by = "electrode") %>%
+  mutate(amplitude.meean = as.numeric(amplitude.mean), 
+         electrode = as.factor(electrode)) %>%
+  filter(amplitude.mean <= 20 & amplitude.mean >= -20) %>%
+  mutate(amplitude.mean <- as.numeric(format(round(amplitude.mean, 2), nsmall = 2)))
 ```
 
 ```{r}
@@ -305,15 +309,14 @@ gavglme <- function(TP1, TP2, where) {
   pol$side = "left"
 
   lme_data <- rbind(fr, fl, fcr, fcl, cr, cl, por, pol, pr, pl, pfr, pfl)
-  lme_data <- filter(lme_data, region == where) # remove this line and change model to avg.mean ~ condition * region for full regions interactiions if interested. Not particularly informative here. 
+  lme_data <- filter(lme_data, region == where)
   
   m <- lmer(avg.mean ~ condition * side + (1 + condition | subject), lme_data)
   n <- summary(m)
   
   return(n) }
 
-  # random sample model
-  gavglme(575, 625, "parietal")
+  gavglme(575, 625, "parietoccipital")
   
 ```
 
@@ -594,8 +597,6 @@ final_plot <- ggarrange(
   common.legend = TRUE)
 
 return(final_plot) }
-
-# Some of the following pictures might not appear to be exactly like those in the thesis. This is because Z axis scales were manually adjusted in the function before producing each of the following pictures. Fixed scales for all or automatically adjustable scales did not yield particularly good results. If you check scale values from the thesis and substitute them before producing each picture in the above function, you will get matching results. 
 
 n1 <- int_compare_scalps(80, 120)
 ggsave("./pictures/scalp_n1.png", n1, width = 9, height = 5, dpi = "print")
