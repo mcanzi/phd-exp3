@@ -26,7 +26,7 @@ library(lmerTest)
 library(lme4)
 ```
 
-```{r}
+```{r, include = F}
 matplotlibRdBu_r <- colorRampPalette(c("#053061","#4694C4","#F6F6F6","#E7886C","#67001F"),interpolate = "spline")
 
 loc_path <- "https://raw.githubusercontent.com/craddm/ExploringERPs/master/biosemi70elecs.loc"
@@ -38,7 +38,7 @@ ERP_TTB = c("palevioletred1", "palegreen3")
 ```
 
 
-```{r, warnings = FALSE}
+```{r, message = FALSE}
 ERP <- rbind(read.csv("EXP3.csv"), read.csv("EXP2.csv")) %>%
             filter_if(~is.numeric(.), all_vars(!is.infinite(.))) %>%
   filter_if(~is.numeric(.), all_vars(!is.infinite(.))) %>%
@@ -79,7 +79,7 @@ ERP <- ERP %>% left_join(electrodeLocs, by = "electrode") %>%
   mutate(amplitude.mean <- as.numeric(format(round(amplitude.mean, 2), nsmall = 2)))
 ```
 
-```{r}
+```{r, include = F}
 ERP_CT <- filter(ERP_testing, block == "SINE") %>% 
   filter(condition != "first_syllable") %>% 
   filter(condition != "second_syllable") %>%
@@ -248,81 +248,58 @@ bae <- function(elec = "Cz", type = "CT", labels = FALSE, range = "PMN", signifi
   return(gap) }
 ```
 
-```{r}
-gavglme <- function(TP1, TP2, where) {
+```{r, message = F}
+gavglme <- function(TP1, TP2, main = TRUE, where = "", somewhere.else = "", REML = TRUE) {
 
-  ERP_lme <- filter(ERP, time >= TP1) %>%
+  if (main == TRUE) {
+  
+  lme_data <- left_join(ERP %>% 
+    filter(condition == "control" | condition == "target") %>% 
+    filter(time >= TP1) %>%
     filter(time <= TP2) %>%
     filter(block == "SINE") %>%
-    filter(condition == "target" | condition == "control")
-
-  ERP_lme <- ERP_lme %>% group_by(subject, block, condition, electrode) %>%
+    group_by(subject, block, condition, electrode) %>%
     summarise(avg.mean = mean(amplitude.mean),) %>%
-    ungroup
+    ungroup(), read.csv("lmer_electrodes.csv", sep = ";"), by = "electrode") } 
   
-  fr <- filter(ERP_lme, electrode == "F2" | electrode == "F4" | electrode == "F6")
-  fr$region = "frontal"
-  fr$side = "right"
-  
-  fcr <- filter(ERP_lme, electrode == "FC2" | electrode == "FC4" | electrode == "FC6")
-  fcr$region = "frontocentral"
-  fcr$side = "right"
-  
-  fcl <- filter(ERP_lme, electrode == "FC1" | electrode == "FC3" | electrode == "FC5")
-  fcl$region = "frontocentral"
-  fcl$side = "left"
-  
-  cr <- filter(ERP_lme, electrode == "C2" | electrode == "C4" | electrode == "C6")
-  cr$region = "central"
-  cr$side = "right"
-  
-  fl <- filter(ERP_lme, electrode == "F1" | electrode == "F3" | electrode == "F5")
-  fl$region = "frontal"
-  fl$side = "left"
-  
-  cl <- filter(ERP_lme, electrode == "C1" | electrode == "C3" | electrode == "C5")
-  cl$region = "central" 
-  cl$side = "left"
+  else {
     
-  pr <- filter(ERP_lme, electrode == "P2" | electrode == "P4" | electrode == "P6")
-  pr$region = "parietal"
-  pr$side = "right"
+  lme_data <- left_join(ERP %>% 
+    filter(condition != "control" | condition != "target") %>% 
+    filter(time >= TP1) %>%
+    filter(time <= TP2) %>%
+    filter(block == "ATT") %>%
+    group_by(subject, block, condition, electrode) %>%
+    summarise(avg.mean = mean(amplitude.mean),) %>%
+    ungroup(), read.csv("lmer_electrodes.csv", sep = ";"), by = "electrode") }
+  
+  if (somewhere.else == "") {
+  
+    m <- lme_data %>%
+    filter(region == where) %>% filter(side != "none") %>% 
+    lmer(formula = avg.mean ~ condition * side + (1 + condition | subject),
+         REML = REML) }
+  
+  else {
+    
+    m <- lme_data %>%
+    filter(region == where | region == somewhere.else) %>% filter(side != "none") %>% 
+    lmer(formula = avg.mean ~ region * condition + region : side + (1 + condition | subject),
+         REML = REML) }
 
-  pl <- filter(ERP_lme, electrode == "P1" | electrode == "P3" | electrode == "P5")
-  pl$region = "parietal"
-  pl$side = "left"
-  
-  pfr <- filter(ERP_lme, electrode == "Fp2") 
-  pfr$region = "prefrontal"
-  pfr$side = "right"
-  
-  pfl <- filter(ERP_lme, electrode == "Fp1") 
-  pfl$region = "prefrontal"
-  pfl$side = "left"
-  
-  por <- filter(ERP_lme, electrode == "PO2" | electrode == "PO4" | electrode == "PO6")
-  por$region = "parietoccipital"
-  por$side = "right"
-  
-  pol <- filter(ERP_lme, electrode == "PO1" | electrode == "PO3" | electrode == "PO5")
-  pol$region = "parietoccipital"
-  pol$side = "left"
+  return(lme_data) }
 
-  lme_data <- rbind(fr, fl, fcr, fcl, cr, cl, por, pol, pr, pl, pfr, pfl)
-  lme_data <- filter(lme_data, region == where)
-  
-  m <- lmer(avg.mean ~ condition * side + (1 + condition | subject), lme_data)
-  n <- summary(m)
-  
-  return(n) }
+x <- gavglme(75, 125, main = TRUE, "frontal", "prefrontal")
 
-  gavglme(575, 625, "parietoccipital")
-  
+str(x)
+
+sjPlot::tab_model(gavglme(75, 125, main = TRUE, "frontal", "prefrontal"))
+sjPlot::tab_model(gavglme(150, 200, main = TRUE, "central", "frontocentral"))
+sjPlot::tab_model(gavglme(290, 310, main = TRUE, "central", "centroparietal"))
+sjPlot::tab_model(gavglme(575, 625, main = TRUE, "central"))
 ```
 
-MISMATCH VS MATCH
-
-```{r}
+```{r, eval = F}
 anterior_frontal3 <- ggarrange(
   bae(elec = "Fp1", labels = TRUE),
   bae(elec = "Fpz"),
@@ -354,9 +331,7 @@ fronto_central3 <- ggarrange(
 ggsave("./pictures/P4_Exp3.png", fronto_central3, width = 11, height = 9, dpi = "print")
 ```
 
-FIRST, SECOND AND THIRD TONES
-
-```{r}
+```{r, eval = F}
 noafa123_af3 <- ggarrange(
   bae(elec = "Fp1", type = "S", labels = TRUE, significant = FALSE),
   bae(elec = "Fpz", type = "S", significant = FALSE),
@@ -420,9 +395,7 @@ fronto_central1233 <- ggarrange(
 ggsave("./pictures/P8_Exp3.png", fronto_central1233, width = 11, height = 9, dpi = "print")
 ```
 
-SYLLABLE VS TONE 
-
-```{r}
+```{r, eval = F}
 ssaf <- ggarrange(
   bae(elec = "Fp1", type = "SS", labels = TRUE, significant = FALSE),
   bae(elec = "Fpz", type = "SS", significant = FALSE),
@@ -454,9 +427,7 @@ ssfc <- ggarrange(
 ggsave("./pictures/P10_Exp3.png", ssfc, width = 11, height = 9, dpi = "print")
 ```
 
-FIRST SYLLABLE, MANIPULATED AND STANDARD
-
-```{r}
+```{r, eval = F}
 noafa1CT_af3 <- ggarrange(
   bae(elec = "Fp1", type = "1CT", labels = TRUE, significant = FALSE),
   bae(elec = "Fpz", type = "1CT", significant = FALSE),
@@ -488,9 +459,7 @@ noafa1CT_fc3 <- ggarrange(
 ggsave("./pictures/P14_Exp3.png", noafa1CT_fc3, width = 11, height = 9, dpi = "print")
 ```
 
-EXPERIMENT 1 MANIPULATED VS EXPERIMENT 2 MANIPULATED
-
-```{r}
+```{r, eval = F}
 exp23anterior_frontal <- ggarrange(
   bae(elec = "Fp1", type = "EXP23", labels = TRUE, significant = FALSE),
   bae(elec = "Fpz", type = "EXP23", significant = FALSE),
@@ -597,7 +566,10 @@ final_plot <- ggarrange(
   common.legend = TRUE)
 
 return(final_plot) }
+```
 
+
+```{r, eval = FALSE}
 n1 <- int_compare_scalps(80, 120)
 ggsave("./pictures/scalp_n1.png", n1, width = 9, height = 5, dpi = "print")
 
