@@ -1,13 +1,10 @@
 ---
-title: "ERP_exploration"
-author: "Massimiliano Canzi"
-date: "27/03/2019"
+title: "Experiment 3: Visual Exploration"
+author: "Massimiliano Canzi | `massimiliano.canzi@uni-konstanz.de`"
+date: "27/03/2019; last modified 20/02/2021"
 output:
   html_document: default
-  pdf_document: default
 ---
-
-## Appendix
 
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -39,7 +36,7 @@ ERP_TTB = c("palevioletred1", "palegreen3")
 
 
 ```{r, message = FALSE}
-ERP <- rbind(read.csv("EXP3.csv"), read.csv("EXP2.csv")) %>%
+ERP <- rbind(read.csv("../data/EXP3.csv"), read.csv("../data/EXP2.csv")) %>%
             filter_if(~is.numeric(.), all_vars(!is.infinite(.))) %>%
   filter_if(~is.numeric(.), all_vars(!is.infinite(.))) %>%
   filter(time >= -100 | time <= 800) %>% 
@@ -69,14 +66,14 @@ ERP_testing <- ERP %>%
          amplitude.mean = as.double(amplitude.mean))
 
 electrodeLocs <- electrodeLocs %>%
-  mutate(radianTheta <- pi / 180 * theta,
+  mutate(radianTheta = pi / 180 * theta,
           x = radius * sin(radianTheta), y = radius * cos(radianTheta))
 
 ERP <- ERP %>% left_join(electrodeLocs, by = "electrode") %>%
-  mutate(amplitude.meean = as.numeric(amplitude.mean), 
+  mutate(amplitude.mean = as.numeric(amplitude.mean), 
          electrode = as.factor(electrode)) %>%
   filter(amplitude.mean <= 20 & amplitude.mean >= -20) %>%
-  mutate(amplitude.mean <- as.numeric(format(round(amplitude.mean, 2), nsmall = 2)))
+  mutate(amplitude.mean = as.numeric(format(round(amplitude.mean, 2), nsmall = 2)))
 ```
 
 ```{r, include = F}
@@ -166,6 +163,77 @@ significance <- function(t = "CT", elec = "") {
   return(fabh$significant) }
 ```
 
+```{r, message = F, warning = F}
+plot.diff <- function(elec = "Cz", labels = FALSE) {
+    ERP.new <- ERP %>% 
+    filter(electrode == elec) %>%
+    filter(block == "SINE") %>% 
+    filter(condition == "control" | condition == "target")
+    
+    ERP.match <- ERP.new %>% filter(condition == "control") %>% filter(subject != "210")
+    ERP.mism <- ERP.new %>% filter(condition == "target") %>% filter(subject != "210")
+    
+    ERP.diff <- ERP.match %>% 
+      mutate(amplitude.mean = ERP.mism$amplitude.mean - ERP.match$amplitude.mean,
+             condition = "difference")
+    
+    ERP.new <- bind_rows(ERP.new, ERP.diff)
+
+  my.plot <- ggplot(ERP.new, aes(time, amplitude.mean, color = condition, linetype = condition)) +
+      geom_line(stat = "summary") +
+      xlim(c(-100, 400)) +
+      geom_vline(xintercept = 0, linetype = "dashed" ) +
+      geom_hline(yintercept = 0, linetype = "dashed") +
+      ggtitle(elec) + 
+      scale_linetype_manual(values = c(2, 1, 2), guide = F) +
+      scale_color_manual(values = c("steelblue", "black", "indianred3"), name = "", labels = c("Match", "Difference", "Mismatch")) +
+      theme(plot.title = element_text(size = 11, face = "bold")) 
+
+  if (labels == TRUE) { 
+    my.plot <- my.plot + 
+      labs(x = "Time (ms)", y = expression(paste("Amplitude (", mu, "V)")), colour = "") +
+      theme_minimal() } 
+
+  if (labels == FALSE) {
+    my.plot <- my.plot +
+    labs(x = "", y = "", colour = "") +
+    theme_void() }
+  
+  return(my.plot) }
+```
+
+```{r, eval = F, include = F}
+af.diff <- ggarrange(
+  plot.diff(elec = "Fp1", labels = TRUE),
+  plot.diff(elec = "Fpz"),
+  plot.diff(elec = "Fp2"),
+  plot.diff(elec = "AF3",),
+  plot.diff(elec = "AFz"),
+  plot.diff(elec = "AF4"),
+  plot.diff(elec = "F3"),
+  plot.diff(elec = "Fz"),
+  plot.diff(elec = "F4"),
+  nrow = 3, ncol = 3,
+  common.legend =  TRUE)
+
+ggsave("./pictures/AFDIFF_Exp3.png", af.diff, width = 9, height = 7, dpi = "print")
+
+fc.diff <- ggarrange( 
+  plot.diff(elec = "FC3", labels = TRUE),
+  plot.diff(elec = "FCz"),
+  plot.diff(elec = "FC4"),
+  plot.diff(elec = "C3"),
+  plot.diff(elec = "Cz"),
+  plot.diff(elec = "C4"),
+  plot.diff(elec = "P3"),
+  plot.diff(elec = "Pz"),
+  plot.diff(elec = "P4"),
+  nrow = 3, ncol = 3,
+  common.legend =  TRUE)
+
+ggsave("./pictures/FCDIFF_Exp3.png", fc.diff, width = 9, height = 7, dpi = "print")
+```
+
 ```{r}
 bae <- function(elec = "Cz", type = "CT", labels = FALSE, range = "PMN", significant = TRUE) {
   
@@ -176,66 +244,64 @@ bae <- function(elec = "Cz", type = "CT", labels = FALSE, range = "PMN", signifi
   
   if (type == "CT") {
     ERP_gae <- filter(ERP_CTest, electrode == elec) 
-    colz <- c("steelblue", "indianred2")
+    colz <- c("steelblue", "indianred3")
+    linez <- c(2, 1)
     labelz <- c("Match", "Mismatch")
     ind_v <- ERP_gae$condition }
   
   else if (type == "2CT") {
     ERP_gae <- filter(ERP_2CTest, electrode == elec) 
-    colz <- c("steelblue", "indianred2")
+    colz <- c("steelblue", "indianred3")
+    linez <- c(2, 1)
     labelz <- c("Match", "Mismatch")
     ind_v <- ERP_gae$condition }
   
   else if (type == "S") {
     ERP_gae <- filter(ERP_S, electrode == elec) 
     colz <- c("violetred3", "palegreen4", "mediumorchid4")
+    linez <- c(1, 1, 1)
     labelz <- c("First tone", "Second tone", "Third tone")
     ind_v <- ERP_gae$condition }
   
   else if (type == "SS") {
     ERP_gae <- filter(ERP_SS, electrode == elec)
-    colz <- c("steelblue", "indianred2")
+    colz <- c("steelblue", "indianred3")
+    linez <- c(2, 1)
     labelz <- c("Syllable", "Tone")
     ind_v <- ERP_gae$block }
   
   else if (type == "1CT") {
     ERP_gae <- filter(ERP_1CT, electrode == elec) 
     colz <- c("steelblue", "palegreen4", "indianred2")
+    linez <- c(2, 3, 1)
     labelz <- c("Match", "First tone", "Mismatch") 
     ind_v <- ERP_gae$condition }
   
   else if (type == "EXP23") {
     ERP_gae <- filter(ERP_EXP23, electrode == elec)
     colz <- c("steelblue", "indianred2")
+    linez <- c(2, 1)
     labelz <- c("Experiment 2", "Experiment 3")
     ind_v <- ERP_gae$block }
 
-  if (labels == TRUE) {
     gap <- ggplot(ERP_gae, aes(time, amplitude.mean, colour = ind_v)) +
-      stat_summary(fun = mean, geom = "line", size = 0.5, na.rm = TRUE, show.legend = TRUE) +
-      stat_smooth(geom='line', alpha = 0.3, size = 2, se = FALSE) +
-      labs(x = "Time (ms)", y = "Amplitude (mV)", colour = "") +
+      geom_line(stat = "summary") +
       xlim(xfocus) +
-      theme_minimal() + 
-      #xlim(c(-100, 350)) +
       geom_vline(xintercept = 0, linetype = "dashed" ) +
       geom_hline(yintercept = 0, linetype = "dashed") +
-      scale_colour_manual(values = colz, labels = labelz) +
+      scale_colour_manual(values = colz, name = "", labels = labelz) +
       ggtitle(elec) +
-      theme(plot.title = element_text(size = 11, face = "bold")) }
+      theme(plot.title = element_text(size = 11, face = "bold")) 
   
-  else {
-    gap <- ggplot(ERP_gae, aes(time, amplitude.mean, colour = ind_v)) +
-      stat_summary(fun = mean, geom = "line", size = 0.5, na.rm = TRUE, show.legend = TRUE) +
-      stat_smooth(geom='line', alpha = 0.3, size = 2, se = FALSE) +
-      labs(x = "", y = "") +
-      xlim(xfocus) +
-      geom_vline(xintercept = 0, linetype = "dashed" ) +
-      geom_hline(yintercept = 0, linetype = "dashed") +
-      scale_colour_manual(values = colz, labels = labelz) +
-      theme_minimal() +
-      ggtitle(elec) +
-      theme(plot.title = element_text(size = 11, face = "bold")) }
+  if (labels == TRUE) {
+    gap <- gap +
+      labs(x = "Time (ms)", y = expression(paste("Amplitude (", mu, "V)")), colour = "") +
+      theme_minimal() }
+    
+  if (labels == FALSE) {
+    gap <- gap + 
+      labs(x = "", y = "", colour = "") +
+      theme_void() }
   
   if (significant == TRUE) {
     spts <- significance(t = type, elec) 
@@ -248,58 +314,7 @@ bae <- function(elec = "Cz", type = "CT", labels = FALSE, range = "PMN", signifi
   return(gap) }
 ```
 
-```{r, message = F}
-gavglme <- function(TP1, TP2, main = TRUE, where = "", somewhere.else = "", REML = TRUE) {
-
-  if (main == TRUE) {
-  
-  lme_data <- left_join(ERP %>% 
-    filter(condition == "control" | condition == "target") %>% 
-    filter(time >= TP1) %>%
-    filter(time <= TP2) %>%
-    filter(block == "SINE") %>%
-    group_by(subject, block, condition, electrode) %>%
-    summarise(avg.mean = mean(amplitude.mean),) %>%
-    ungroup(), read.csv("lmer_electrodes.csv", sep = ";"), by = "electrode") } 
-  
-  else {
-    
-  lme_data <- left_join(ERP %>% 
-    filter(condition != "control" | condition != "target") %>% 
-    filter(time >= TP1) %>%
-    filter(time <= TP2) %>%
-    filter(block == "ATT") %>%
-    group_by(subject, block, condition, electrode) %>%
-    summarise(avg.mean = mean(amplitude.mean),) %>%
-    ungroup(), read.csv("lmer_electrodes.csv", sep = ";"), by = "electrode") }
-  
-  if (somewhere.else == "") {
-  
-    m <- lme_data %>%
-    filter(region == where) %>% filter(side != "none") %>% 
-    lmer(formula = avg.mean ~ condition * side + (1 + condition | subject),
-         REML = REML) }
-  
-  else {
-    
-    m <- lme_data %>%
-    filter(region == where | region == somewhere.else) %>% filter(side != "none") %>% 
-    lmer(formula = avg.mean ~ region * condition + region : side + (1 + condition | subject),
-         REML = REML) }
-
-  return(lme_data) }
-
-x <- gavglme(75, 125, main = TRUE, "frontal", "prefrontal")
-
-str(x)
-
-sjPlot::tab_model(gavglme(75, 125, main = TRUE, "frontal", "prefrontal"))
-sjPlot::tab_model(gavglme(150, 200, main = TRUE, "central", "frontocentral"))
-sjPlot::tab_model(gavglme(290, 310, main = TRUE, "central", "centroparietal"))
-sjPlot::tab_model(gavglme(575, 625, main = TRUE, "central"))
-```
-
-```{r, eval = F}
+```{r, eval = F, include = F}
 anterior_frontal3 <- ggarrange(
   bae(elec = "Fp1", labels = TRUE),
   bae(elec = "Fpz"),
@@ -313,7 +328,7 @@ anterior_frontal3 <- ggarrange(
   nrow = 3, ncol = 3,
   common.legend =  TRUE)
 
-ggsave("./pictures/P3_Exp3.png", anterior_frontal3, width = 11, height = 9, dpi = "print")
+ggsave("./pictures/P3_Exp3.png", anterior_frontal3, width = 9, height = 7, dpi = "print")
 
 fronto_central3 <- ggarrange( 
   bae(elec = "FC3", labels = TRUE),
@@ -328,10 +343,10 @@ fronto_central3 <- ggarrange(
   nrow = 3, ncol = 3,
   common.legend =  TRUE)
 
-ggsave("./pictures/P4_Exp3.png", fronto_central3, width = 11, height = 9, dpi = "print")
+ggsave("./pictures/P4_Exp3.png", fronto_central3, width = 9, height = 7, dpi = "print")
 ```
 
-```{r, eval = F}
+```{r, eval = F, include = F}
 noafa123_af3 <- ggarrange(
   bae(elec = "Fp1", type = "S", labels = TRUE, significant = FALSE),
   bae(elec = "Fpz", type = "S", significant = FALSE),
@@ -345,7 +360,7 @@ noafa123_af3 <- ggarrange(
   nrow = 3, ncol = 3, 
   common.legend =  TRUE)
 
-ggsave("./pictures/P5_Exp3.png", noafa123_af3, width = 11, height = 9, dpi = "print")
+ggsave("./pictures/P5_Exp3.png", noafa123_af3, width = 9, height = 7, dpi = "print")
 
 bae(elec = "F4", type = "CT", labels = TRUE, significant = FALSE)
 
@@ -362,7 +377,7 @@ noafa123_fc3 <- ggarrange(
   nrow = 3, ncol = 3, 
   common.legend =  TRUE)
 
-ggsave("./pictures/P6_Exp3.png", noafa123_fc3, width = 11, height = 9, dpi = "print")
+ggsave("./pictures/P6_Exp3.png", noafa123_fc3, width = 9, height = 7, dpi = "print")
 
 anterior_frontal1233 <- ggarrange(
   bae(elec = "Fp1", type = "S", labels = TRUE),
@@ -377,7 +392,7 @@ anterior_frontal1233 <- ggarrange(
   nrow = 3, ncol = 3,
   common.legend =  TRUE)
 
-ggsave("./pictures/P7_Exp3.png", anterior_frontal1233, width = 11, height = 9, dpi = "print")
+ggsave("./pictures/P7_Exp3.png", anterior_frontal1233, width = 9, height = 7, dpi = "print")
 
 fronto_central1233 <- ggarrange( 
   bae(elec = "FC3", type = "S", labels = TRUE),
@@ -392,10 +407,10 @@ fronto_central1233 <- ggarrange(
   nrow = 3, ncol = 3,
   common.legend =  TRUE)
 
-ggsave("./pictures/P8_Exp3.png", fronto_central1233, width = 11, height = 9, dpi = "print")
+ggsave("./pictures/P8_Exp3.png", fronto_central1233, width = 9, height = 7, dpi = "print")
 ```
 
-```{r, eval = F}
+```{r, eval = F, include = F}
 ssaf <- ggarrange(
   bae(elec = "Fp1", type = "SS", labels = TRUE, significant = FALSE),
   bae(elec = "Fpz", type = "SS", significant = FALSE),
@@ -409,7 +424,7 @@ ssaf <- ggarrange(
   nrow = 3, ncol = 3, 
   common.legend =  TRUE)
 
-ggsave("./pictures/P9_Exp3.png", ssaf, width = 11, height = 9, dpi = "print")
+ggsave("./pictures/P9_Exp3.png", ssaf, width = 9, height = 7, dpi = "print")
 
 ssfc <- ggarrange(
   bae(elec = "FC3", type = "SS", labels = TRUE, significant = FALSE),
@@ -424,10 +439,10 @@ ssfc <- ggarrange(
   nrow = 3, ncol = 3, 
   common.legend =  TRUE)
 
-ggsave("./pictures/P10_Exp3.png", ssfc, width = 11, height = 9, dpi = "print")
+ggsave("./pictures/P10_Exp3.png", ssfc, width = 9, height = 7, dpi = "print")
 ```
 
-```{r, eval = F}
+```{r, eval = F, include = F}
 noafa1CT_af3 <- ggarrange(
   bae(elec = "Fp1", type = "1CT", labels = TRUE, significant = FALSE),
   bae(elec = "Fpz", type = "1CT", significant = FALSE),
@@ -459,7 +474,7 @@ noafa1CT_fc3 <- ggarrange(
 ggsave("./pictures/P14_Exp3.png", noafa1CT_fc3, width = 11, height = 9, dpi = "print")
 ```
 
-```{r, eval = F}
+```{r, eval = F, include = F}
 exp23anterior_frontal <- ggarrange(
   bae(elec = "Fp1", type = "EXP23", labels = TRUE, significant = FALSE),
   bae(elec = "Fpz", type = "EXP23", significant = FALSE),
@@ -473,7 +488,7 @@ exp23anterior_frontal <- ggarrange(
   nrow = 3, ncol = 3, 
   common.legend =  TRUE)
 
-ggsave("./pictures/P11_Exp3.png", exp23anterior_frontal, width = 11, height = 9, dpi = "print")
+ggsave("./pictures/P11_Exp3.png", exp23anterior_frontal, width = 9, height = 7, dpi = "print")
 
 exp23fronto_central <- ggarrange(
   bae(elec = "FC3", type = "EXP23", labels = TRUE, significant = FALSE),
@@ -488,7 +503,7 @@ exp23fronto_central <- ggarrange(
   nrow = 3, ncol = 3, 
   common.legend =  TRUE)
 
-ggsave("./pictures/P12_Exp3.png", exp23fronto_central, width = 11, height = 9, dpi = "print")
+ggsave("./pictures/P12_Exp3.png", exp23fronto_central, width = 9, height = 7, dpi = "print")
 ```
 
 ```{r}
@@ -568,8 +583,7 @@ final_plot <- ggarrange(
 return(final_plot) }
 ```
 
-
-```{r, eval = FALSE}
+```{r, include = F, eval = FALSE}
 n1 <- int_compare_scalps(80, 120)
 ggsave("./pictures/scalp_n1.png", n1, width = 9, height = 5, dpi = "print")
 
