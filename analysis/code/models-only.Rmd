@@ -14,9 +14,11 @@ library(tidyverse)
 ```
 
 ```{r readr.1, message = FALSE}
-ERP <- bind_rows(read.csv("../data/EXP2.csv"), read.csv("../data/EXP3.csv")) %>% 
-  filter_if(~is.numeric(.), all_vars(!is.infinite(.))) %>%
-  filter(time >= -100 & time <= 800) %>% na.omit() %>%
+ERP <- read.csv("../data/EXP3.csv") %>% 
+  filter(Block == "SINE") %>%
+  filter(Cond == "control" | Cond == "target") %>%
+  # filter_if(~is.numeric(.), all_vars(!is.infinite(.))) %>%
+  filter(time >= 0 & time <= 700) %>% na.omit() %>%
   gather(electrode, amplitude, Fp1:T8, factor_key = TRUE) %>%
   mutate(time = as.numeric(as.character(format(round(time, 0), nsmall = 0))),
          Subj = as.factor(Subj),
@@ -40,10 +42,8 @@ ERP %<>% mutate(time = as.factor(time)) %>%
 summarised.model <- function(TP1, TP2, type = "lmer") {
   
   lmer.data <- left_join(ERP %>% 
-    filter(condition == "control" | condition == "target") %>% 
     filter(time >= TP1) %>%
     filter(time <= TP2) %>%
-    filter(block == "SINE") %>%
     group_by(subject, block, condition, electrode) %>%
     summarise(avg.mean = mean(amplitude.mean),) %>%
     ungroup(), read.csv("../resources/lmer_electrodes.csv", 
@@ -62,7 +62,7 @@ summarised.model <- function(TP1, TP2, type = "lmer") {
   return(m) }
 ```
 
-```{r, message = F}
+```{r, message = T}
 anova(summarised.model(75, 125, type = "lm"))
 ```
 
@@ -72,4 +72,8 @@ anova(summarised.model(150, 200, type = "lm"))
 
 ```{r, message = F}
 anova(summarised.model(290, 310, type = "lm"))
+```
+
+```{r}
+anova(summarised.model(600, 650, type = "lm"))
 ```
