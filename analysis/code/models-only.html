@@ -240,22 +240,23 @@ div.tocify {
 
 
 
-<h1 class="title toc-ignore">Experiment 3: Data modelling</h1>
+<h1 class="title toc-ignore"><strong>Experiment 3:</strong> Data modelling</h1>
 <h4 class="author">Massimiliano Canzi | <code>massimiliano.canzi@uni-konstanz.de</code></h4>
-<h4 class="date">20/02/2021</h4>
+<h4 class="date">Last modified: <em>20/02/2021</em></h4>
 
 </div>
 
 
-<pre class="r"><code>library(car)
-library(emmeans)
-library(nlme)
-library(magrittr)
-library(tidyverse)</code></pre>
+<pre class="r"><code>library(emmeans) # Pair-wise contrasts
+library(lme4) # Linear Mixed Effect Models
+library(lmerTest) # KR F-test ANOVA tables
+library(magrittr) # For %&lt;&gt;%
+library(tidyverse) # For everything else! </code></pre>
+<div id="data-pre-processing" class="section level2">
+<h2>Data pre-processing</h2>
 <pre class="r"><code>ERP &lt;- read.csv(&quot;../data/EXP3.csv&quot;) %&gt;% 
   filter(Block == &quot;SINE&quot;) %&gt;%
   filter(Cond == &quot;control&quot; | Cond == &quot;target&quot;) %&gt;%
-  # filter_if(~is.numeric(.), all_vars(!is.infinite(.))) %&gt;%
   filter(time &gt;= 0 &amp; time &lt;= 700) %&gt;% na.omit() %&gt;%
   gather(electrode, amplitude, Fp1:T8, factor_key = TRUE) %&gt;%
   mutate(time = as.numeric(as.character(format(round(time, 0), nsmall = 0))),
@@ -271,133 +272,140 @@ names(ERP) &lt;- c(&quot;subject&quot;, &quot;block&quot;, &quot;condition&quot;
                        electrode = as.factor(electrode)) %&gt;%
   filter(amplitude.mean &lt;= 20 &amp; amplitude.mean &gt;= -20) %&gt;%
   mutate(amplitude.mean = as.numeric(format(round(amplitude.mean, 2), nsmall = 2)))</code></pre>
+</div>
+<div id="model-preparation" class="section level2">
+<h2>Model preparation</h2>
 <pre class="r"><code>summarised.data &lt;- function(TP1, TP2) {
   
-  lmer.data &lt;- left_join(ERP %&gt;% 
+  lmer.data &lt;- left_join(ERP %&gt;%
     filter(time &gt;= TP1) %&gt;%
     filter(time &lt;= TP2) %&gt;%
     group_by(subject, block, condition, electrode) %&gt;%
-    summarise(amplitude = mean(amplitude.mean),) %&gt;%
-    ungroup(), read.csv(&quot;../resources/lmer_electrodes.csv&quot;, 
-                        sep = &quot;;&quot;), by = &quot;electrode&quot;) %&gt;%
-    filter(side != &quot;none&quot;)
-
-  return(data.frame(lmer.data)) }</code></pre>
+    summarise(amplitude = mean(amplitude.mean),) %&gt;% ungroup,
+    read.csv(&quot;../resources/lmer_electrodes.csv&quot;, 
+                        sep = &quot;;&quot;), by = &quot;electrode&quot;) %&gt;% 
+    rename(hemisphere = side) %&gt;%
+    filter(hemisphere != &quot;none&quot;) %&gt;% mutate_if(is.character, as.factor) %&gt;%
+    select(subject, hemisphere, region, condition, amplitude) %&gt;%
+    mutate(subject = as.factor(paste0(&quot;S&quot;, subject)))
+  
+  return(lmer.data) }</code></pre>
+<pre class="r"><code>control &lt;- lmerControl(check.conv.singular = &quot;ignore&quot;)
+REML = TRUE</code></pre>
+<pre class="r"><code>head(summarised.data(75, 100))</code></pre>
+<pre><code>## # A tibble: 6 x 5
+##   subject hemisphere region         condition amplitude
+##   &lt;fct&gt;   &lt;fct&gt;      &lt;fct&gt;          &lt;fct&gt;         &lt;dbl&gt;
+## 1 S301    left       prefrontal     control      -1.07 
+## 2 S301    left       anteriofrontal control      -1.29 
+## 3 S301    left       anteriofrontal control      -0.328
+## 4 S301    left       frontal        control       0.59 
+## 5 S301    left       frontal        control       1.66 
+## 6 S301    left       frontal        control      -0.138</code></pre>
+</div>
 <div id="ms" class="section level2">
-<h2>150-200 ms</h2>
-<pre class="r"><code>data.model &lt;- summarised.data(140, 180)
-
-model.140.180 &lt;- lme(amplitude ~ region * condition + side, random = ~1 | subject, 
-                     method = &quot;REML&quot;, data = data.model)</code></pre>
-<pre class="r"><code>Anova(model.140.180, type = &quot;III&quot;)</code></pre>
-<pre><code>## Analysis of Deviance Table (Type III tests)
-## 
-## Response: amplitude
-##                     Chisq Df Pr(&gt;Chisq)    
-## (Intercept)       64.9299  1  7.761e-16 ***
-## region           632.6757 10  &lt; 2.2e-16 ***
-## condition          0.1442  1     0.7041    
-## side               2.3603  1     0.1245    
-## region:condition   2.3372 10     0.9930    
+<h2>140-180 ms</h2>
+<pre class="r"><code>model.140.180 &lt;- summarised.data(180, 180) %&gt;% 
+  lmer(formula = amplitude ~ condition * region + hemisphere + (1 | subject), 
+       control = control, REML = REML)</code></pre>
+<pre class="r"><code>anova(model.140.180, type = &quot;III&quot;, ddf = &quot;Kenward-Roger&quot;)</code></pre>
+<pre><code>## Type III Analysis of Variance Table with Kenward-Roger&#39;s method
+##                  Sum Sq Mean Sq NumDF DenDF  F value Pr(&gt;F)    
+## condition           0.0    0.04     1  1155   0.0107 0.9175    
+## region           6497.7  649.77    10  1155 160.4287 &lt;2e-16 ***
+## hemisphere          6.1    6.15     1  1155   1.5175 0.2182    
+## condition:region    7.9    0.79    10  1155   0.1956 0.9966    
 ## ---
 ## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
 </div>
 <div id="ms-1" class="section level2">
 <h2>290-310 ms</h2>
-<pre class="r"><code>data.model &lt;- summarised.data(290, 310)
-
-model.290.310 &lt;- lme(amplitude ~ region * condition + side, random = ~1 | subject, 
-                     method = &quot;REML&quot;, data = data.model)</code></pre>
-<pre class="r"><code>Anova(model.290.310, type = &quot;III&quot;)</code></pre>
-<pre><code>## Analysis of Deviance Table (Type III tests)
-## 
-## Response: amplitude
-##                     Chisq Df Pr(&gt;Chisq)    
-## (Intercept)       94.8425  1     &lt;2e-16 ***
-## region           593.9035 10     &lt;2e-16 ***
-## condition          0.4970  1     0.4808    
-## side               0.9057  1     0.3412    
-## region:condition   3.2503 10     0.9749    
+<pre class="r"><code>model.290.310 &lt;- summarised.data(290, 310) %&gt;% 
+  lmer(formula = amplitude ~ condition * region + hemisphere + (1 | subject), 
+       control = control, REML = REML)</code></pre>
+<pre class="r"><code>anova(model.290.310, type = &quot;III&quot;, ddf = &quot;Kenward-Roger&quot;)</code></pre>
+<pre><code>## Type III Analysis of Variance Table with Kenward-Roger&#39;s method
+##                  Sum Sq Mean Sq NumDF DenDF  F value Pr(&gt;F)    
+## condition           0.0    0.00     1  1155   0.0002 0.9874    
+## region           3936.7  393.67    10  1155 123.8794 &lt;2e-16 ***
+## hemisphere          2.9    2.88     1  1155   0.9057 0.3414    
+## condition:region   10.3    1.03    10  1155   0.3250 0.9747    
 ## ---
 ## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
 </div>
 <div id="section" class="section level2">
 <h2>575-625</h2>
-<pre class="r"><code>data.model &lt;- summarised.data(575, 625)
-
-model.575.625 &lt;- lme(amplitude ~ region * condition + side, random = ~1 | subject, 
-                     method = &quot;REML&quot;, data = data.model)</code></pre>
-<pre class="r"><code>Anova(model.575.625, type = &quot;III&quot;)</code></pre>
-<pre><code>## Analysis of Deviance Table (Type III tests)
-## 
-## Response: amplitude
-##                     Chisq Df Pr(&gt;Chisq)    
-## (Intercept)      117.8506  1  &lt; 2.2e-16 ***
-## region           894.5599 10  &lt; 2.2e-16 ***
-## condition          6.6815  1  0.0097417 ** 
-## side               0.0532  1  0.8175734    
-## region:condition  29.7942 10  0.0009256 ***
+<pre class="r"><code>model.575.625 &lt;- summarised.data(575, 625) %&gt;% 
+  lmer(formula = amplitude ~ condition * region + hemisphere + (1 | subject), 
+       control = control, REML = REML)</code></pre>
+<pre class="r"><code>anova(model.575.625, type = &quot;III&quot;, ddf = &quot;Kenward-Roger&quot;)</code></pre>
+<pre><code>## Type III Analysis of Variance Table with Kenward-Roger&#39;s method
+##                   Sum Sq Mean Sq NumDF DenDF  F value    Pr(&gt;F)    
+## condition            8.4    8.41     1  1155   1.4507  0.228670    
+## region           12890.9 1289.09    10  1155 222.2748 &lt; 2.2e-16 ***
+## hemisphere           0.3    0.31     1  1155   0.0532  0.817614    
+## condition:region   172.8   17.28    10  1155   2.9794  0.001027 ** 
 ## ---
 ## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
 <pre class="r"><code>emmeans(model.575.625, pairwise ~ condition | region)</code></pre>
 <pre><code>## $emmeans
 ## region = anteriofrontal:
-##  condition  emmean    SE df lower.CL upper.CL
-##  control   -3.9975 0.363 10   -4.806  -3.1885
-##  target    -5.3246 0.363 10   -6.134  -4.5157
+##  condition  emmean    SE   df lower.CL upper.CL
+##  control   -3.9975 0.363 1064   -4.710  -3.2851
+##  target    -5.3246 0.363 1064   -6.037  -4.6123
 ## 
 ## region = central:
-##  condition  emmean    SE df lower.CL upper.CL
-##  control   -0.5366 0.296 10   -1.197   0.1239
-##  target    -0.6351 0.296 10   -1.296   0.0254
+##  condition  emmean    SE   df lower.CL upper.CL
+##  control   -0.5366 0.296  925   -1.118   0.0452
+##  target    -0.6351 0.296  925   -1.217  -0.0533
 ## 
 ## region = centroparietal:
-##  condition  emmean    SE df lower.CL upper.CL
-##  control    1.1747 0.296 10    0.514   1.8352
-##  target     1.6912 0.296 10    1.031   2.3516
+##  condition  emmean    SE   df lower.CL upper.CL
+##  control    1.1747 0.296  925    0.593   1.7565
+##  target     1.6912 0.296  925    1.109   2.2729
 ## 
 ## region = frontal:
-##  condition  emmean    SE df lower.CL upper.CL
-##  control   -3.4881 0.257 10   -4.060  -2.9161
-##  target    -4.3686 0.257 10   -4.941  -3.7966
+##  condition  emmean    SE   df lower.CL upper.CL
+##  control   -3.4881 0.257  775   -3.992  -2.9842
+##  target    -4.3686 0.257  775   -4.873  -3.8647
 ## 
 ## region = frontocentral:
-##  condition  emmean    SE df lower.CL upper.CL
-##  control   -2.3843 0.296 10   -3.045  -1.7238
-##  target    -2.8074 0.296 10   -3.468  -2.1469
+##  condition  emmean    SE   df lower.CL upper.CL
+##  control   -2.3843 0.296  925   -2.966  -1.8026
+##  target    -2.8074 0.296  925   -3.389  -2.2256
 ## 
 ## region = frontotemporal:
-##  condition  emmean    SE df lower.CL upper.CL
-##  control    0.0835 0.513 10   -1.061   1.2275
-##  target    -1.3382 0.513 10   -2.482  -0.1942
+##  condition  emmean    SE   df lower.CL upper.CL
+##  control    0.0835 0.513 1152   -0.924   1.0908
+##  target    -1.3382 0.513 1152   -2.346  -0.3309
 ## 
 ## region = occipital:
-##  condition  emmean    SE df lower.CL upper.CL
-##  control    4.0531 0.513 10    2.909   5.1971
-##  target     4.8125 0.513 10    3.669   5.9565
+##  condition  emmean    SE   df lower.CL upper.CL
+##  control    4.0531 0.513 1152    3.046   5.0605
+##  target     4.8125 0.513 1152    3.805   5.8199
 ## 
 ## region = parietal:
-##  condition  emmean    SE df lower.CL upper.CL
-##  control    3.3230 0.230 10    2.811   3.8346
-##  target     3.9253 0.230 10    3.414   4.4370
+##  condition  emmean    SE   df lower.CL upper.CL
+##  control    3.3230 0.230  637    2.872   3.7739
+##  target     3.9253 0.230  637    3.474   4.3762
 ## 
 ## region = parietooccipital:
-##  condition  emmean    SE df lower.CL upper.CL
-##  control    3.7488 0.363 10    2.940   4.5577
-##  target     4.9171 0.363 10    4.108   5.7260
+##  condition  emmean    SE   df lower.CL upper.CL
+##  control    3.7488 0.363 1064    3.036   4.4611
+##  target     4.9171 0.363 1064    4.205   5.6294
 ## 
 ## region = prefrontal:
-##  condition  emmean    SE df lower.CL upper.CL
-##  control   -4.5827 0.513 10   -5.727  -3.4387
-##  target    -5.4801 0.513 10   -6.624  -4.3361
+##  condition  emmean    SE   df lower.CL upper.CL
+##  control   -4.5827 0.513 1152   -5.590  -3.5754
+##  target    -5.4801 0.513 1152   -6.487  -4.4727
 ## 
 ## region = temporal:
-##  condition  emmean    SE df lower.CL upper.CL
-##  control    2.4958 0.363 10    1.687   3.3048
-##  target     2.3644 0.363 10    1.555   3.1733
+##  condition  emmean    SE   df lower.CL upper.CL
+##  control    2.4958 0.363 1064    1.783   3.2082
+##  target     2.3644 0.363 1064    1.652   3.0768
 ## 
-## Results are averaged over the levels of: side 
-## Degrees-of-freedom method: containment 
+## Results are averaged over the levels of: hemisphere 
+## Degrees-of-freedom method: kenward-roger 
 ## Confidence level used: 0.95 
 ## 
 ## $contrasts
@@ -445,8 +453,8 @@ model.575.625 &lt;- lme(amplitude ~ region * condition + side, random = ~1 | sub
 ##  contrast         estimate    SE   df t.ratio p.value
 ##  control - target   0.1315 0.513 1155  0.256  0.7980 
 ## 
-## Results are averaged over the levels of: side 
-## Degrees-of-freedom method: containment</code></pre>
+## Results are averaged over the levels of: hemisphere 
+## Degrees-of-freedom method: kenward-roger</code></pre>
 </div>
 
 

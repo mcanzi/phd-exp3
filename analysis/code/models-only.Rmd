@@ -1,7 +1,7 @@
 ---
-title: "Experiment 3: Data modelling"
+title: "__Experiment 3:__ Data modelling"
 author: "Massimiliano Canzi | `massimiliano.canzi@uni-konstanz.de`"
-date: "20/02/2021"
+date: "Last modified: _20/02/2021_"
 output: 
   html_document:
     toc: TRUE
@@ -9,18 +9,19 @@ output:
 ---
 
 ```{r, message = F}
-library(car)
-library(emmeans)
-library(nlme)
-library(magrittr)
-library(tidyverse)
+library(emmeans) # Pair-wise contrasts
+library(lme4) # Linear Mixed Effect Models
+library(lmerTest) # KR F-test ANOVA tables
+library(magrittr) # For %<>%
+library(tidyverse) # For everything else! 
 ```
+
+## Data pre-processing
 
 ```{r readr.1, message = FALSE}
 ERP <- read.csv("../data/EXP3.csv") %>% 
   filter(Block == "SINE") %>%
   filter(Cond == "control" | Cond == "target") %>%
-  # filter_if(~is.numeric(.), all_vars(!is.infinite(.))) %>%
   filter(time >= 0 & time <= 700) %>% na.omit() %>%
   gather(electrode, amplitude, Fp1:T8, factor_key = TRUE) %>%
   mutate(time = as.numeric(as.character(format(round(time, 0), nsmall = 0))),
@@ -41,57 +42,68 @@ ERP %<>% mutate(time = as.factor(time)) %>%
   mutate(amplitude.mean = as.numeric(format(round(amplitude.mean, 2), nsmall = 2)))
 ```
 
-```{r, summarised.model, message = F}
+## Model preparation
+
+```{r, summarised.data.function, message = F}
 summarised.data <- function(TP1, TP2) {
   
-  lmer.data <- left_join(ERP %>% 
+  lmer.data <- left_join(ERP %>%
     filter(time >= TP1) %>%
     filter(time <= TP2) %>%
     group_by(subject, block, condition, electrode) %>%
-    summarise(amplitude = mean(amplitude.mean),) %>%
-    ungroup(), read.csv("../resources/lmer_electrodes.csv", 
-                        sep = ";"), by = "electrode") %>%
-    filter(side != "none")
-
-  return(data.frame(lmer.data)) }
+    summarise(amplitude = mean(amplitude.mean),) %>% ungroup,
+    read.csv("../resources/lmer_electrodes.csv", 
+                        sep = ";"), by = "electrode") %>% 
+    rename(hemisphere = side) %>%
+    filter(hemisphere != "none") %>% mutate_if(is.character, as.factor) %>%
+    select(subject, hemisphere, region, condition, amplitude) %>%
+    mutate(subject = as.factor(paste0("S", subject)))
+  
+  return(lmer.data) }
 ```
 
-## 150-200 ms
-
-```{r, message = F}
-data.model <- summarised.data(140, 180)
-
-model.140.180 <- lme(amplitude ~ region * condition + side, random = ~1 | subject, 
-                     method = "REML", data = data.model)
+```{r control.REML, message = F}
+control <- lmerControl(check.conv.singular = "ignore")
+REML = TRUE
 ```
 
-```{r}
-Anova(model.140.180, type = "III")
+```{r head, message = F}
+head(summarised.data(75, 100))
 ```
+
+## 140-180 ms
+
+```{r model.160.210, message = F}
+model.140.180 <- summarised.data(180, 180) %>% 
+  lmer(formula = amplitude ~ condition * region + hemisphere + (1 | subject), 
+       control = control, REML = REML)
+```
+
+```{r Anova.model.160.210, message = F}
+anova(model.140.180, type = "III", ddf = "Kenward-Roger")
+``` 
 
 ## 290-310 ms
 
-```{r, message = F}
-data.model <- summarised.data(290, 310)
-
-model.290.310 <- lme(amplitude ~ region * condition + side, random = ~1 | subject, 
-                     method = "REML", data = data.model)
+```{r model.290.310, message = F}
+model.290.310 <- summarised.data(290, 310) %>% 
+  lmer(formula = amplitude ~ condition * region + hemisphere + (1 | subject), 
+       control = control, REML = REML)
 ```
 
-```{r}
-Anova(model.290.310, type = "III")
+```{r Anova.model.290.310, message = F}
+anova(model.290.310, type = "III", ddf = "Kenward-Roger")
 ```
 
 ## 575-625
 
-```{r, message = F}
-data.model <- summarised.data(575, 625)
-
-model.575.625 <- lme(amplitude ~ region * condition + side, random = ~1 | subject, 
-                     method = "REML", data = data.model)
+```{r model.575.625, message = F}
+model.575.625 <- summarised.data(575, 625) %>% 
+  lmer(formula = amplitude ~ condition * region + hemisphere + (1 | subject), 
+       control = control, REML = REML)
 ```
 
-```{r}
-Anova(model.575.625, type = "III")
+```{r Anova.model.575.625, message = F}
+anova(model.575.625, type = "III", ddf = "Kenward-Roger")
 emmeans(model.575.625, pairwise ~ condition | region)
 ```
