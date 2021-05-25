@@ -73,8 +73,8 @@ head(summarised.data(75, 100))
 
 ## 140-180 ms
 
-```{r model.160.210, message = F}
-model.140.180 <- summarised.data(180, 180) %>% 
+```{r message = F}
+model.140.180 <- summarised.data(140, 180) %>% 
   lmer(formula = amplitude ~ condition * region + hemisphere + (1 | subject), 
        control = control, REML = REML)
 ```
