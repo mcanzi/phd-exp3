@@ -63,7 +63,6 @@ summarised.data <- function(TP1, TP2) {
 ```
 
 ```{r control.REML, message = F}
-control <- lmerControl(check.conv.singular = "ignore")
 REML = TRUE
 ```
 
@@ -75,8 +74,7 @@ head(summarised.data(75, 100))
 
 ```{r message = F}
 model.140.180 <- summarised.data(140, 180) %>% 
-  lmer(formula = amplitude ~ condition * region + hemisphere + (1 | subject), 
-       control = control, REML = REML)
+  lm(formula = amplitude ~ condition * region + hemisphere + (1 | subject), control = control, REML = REML)
 ```
 
 ```{r Anova.model.160.210, message = F}
